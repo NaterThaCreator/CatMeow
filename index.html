@@ -102,43 +102,6 @@
     #status.error     { color: #ff6b6b; opacity: 0.9; }
     #status.sending   { color: #ffd93d; opacity: 0.9; }
 
-    /* ── Power button ── */
-    .power-row {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.4rem;
-    }
-    #power-btn {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      border: 2.5px solid #6bcb77;
-      background: rgba(107, 203, 119, 0.12);
-      box-shadow: 0 0 18px rgba(107, 203, 119, 0.35);
-      font-size: 1.8rem;
-      cursor: pointer;
-      transition: transform 0.1s, box-shadow 0.15s, border-color 0.2s,
-                  background 0.2s, color 0.2s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #6bcb77;
-    }
-    #power-btn.off {
-      border-color: #c0392b;
-      background: rgba(192, 57, 43, 0.12);
-      box-shadow: 0 0 18px rgba(192, 57, 43, 0.3);
-      color: #c0392b;
-    }
-    #power-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    #power-btn:not(:disabled):active { transform: scale(0.93); }
-    #power-label {
-      font-size: 0.75rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      opacity: 0.6;
-    }
   </style>
 </head>
 <body>
@@ -159,10 +122,6 @@
 
   <div id="status">Connecting…</div>
 
-  <div class="power-row">
-    <button id="power-btn" disabled title="Power on/off">⏻</button>
-    <span id="power-label">ON</span>
-  </div>
 
 <script>
   // ── CONFIGURATION — fill these in ─────────────────────────────────────────
@@ -176,13 +135,9 @@
   const CLIENT_ID   = "web-cat-" + Math.random().toString(16).slice(2, 8);
 
   const btn        = document.getElementById("meow-btn");
-  const powerBtn   = document.getElementById("power-btn");
-  const powerLabel = document.getElementById("power-label");
   const slider     = document.getElementById("volume");
   const volDisplay = document.getElementById("vol-display");
   const statusEl   = document.getElementById("status");
-
-  let isPowered = true;
 
   // ── Volume slider ──────────────────────────────────────────────────────────
   slider.addEventListener("input", () => {
@@ -198,8 +153,7 @@
   }
 
   client.onConnectionLost = (resp) => {
-    btn.disabled      = true;
-    powerBtn.disabled = true;
+    btn.disabled = true;
     setStatus("Disconnected — reconnecting…", "error");
     setTimeout(connect, 3000);
   };
@@ -212,8 +166,7 @@
       password: MQTT_PASS,
       onSuccess() {
         setStatus("Connected ✓", "connected");
-        powerBtn.disabled = false;
-        updatePowerUI();
+        btn.disabled = false;
       },
       onFailure(err) {
         setStatus("Connection failed: " + err.errorMessage, "error");
@@ -254,29 +207,6 @@
     }
   });
 
-  // ── Power button ────────────────────────────────────────────────────────────
-  function sendPower(on) {
-    if (!client.isConnected()) return;
-    const msg = new Paho.Message(JSON.stringify({ power: on }));
-    msg.destinationName = "cat/power";
-    msg.qos      = 1;
-    msg.retained = true;   // ESP32 receives correct state on every (re)connect
-    client.send(msg);
-  }
-
-  function updatePowerUI() {
-    const connected = client.isConnected();
-    powerBtn.classList.toggle("off", !isPowered);
-    powerLabel.textContent = isPowered ? "ON" : "OFF";
-    btn.disabled = !connected || !isPowered;
-  }
-
-  powerBtn.addEventListener("click", () => {
-    isPowered = !isPowered;
-    sendPower(isPowered);
-    updatePowerUI();
-    setStatus(isPowered ? "Connected ✓" : "Device off", isPowered ? "connected" : "error");
-  });
 </script>
 </body>
 </html>
