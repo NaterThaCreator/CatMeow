@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cat Meow Button</title>
+
+  <!-- Paho MQTT client via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
+
+  <style>
+    /* ── Reset / base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+      background: #1a1a2e;
+      font-family: system-ui, sans-serif;
+      color: #e0e0e0;
+      user-select: none;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      letter-spacing: 0.05em;
+      opacity: 0.7;
+    }
+
+    /* ── Meow button ── */
+    #meow-btn {
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      border: none;
+      background: radial-gradient(circle at 40% 35%, #ff9f43, #ee5a24);
+      box-shadow: 0 0 40px rgba(238, 90, 36, 0.45);
+      font-size: 3.5rem;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #meow-btn:active,
+    #meow-btn.pressed {
+      transform: scale(0.93);
+      box-shadow: 0 0 15px rgba(238, 90, 36, 0.3);
+    }
+    #meow-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ── Volume slider ── */
+    .volume-row {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      width: 220px;
+    }
+    .volume-label {
+      font-size: 0.85rem;
+      opacity: 0.6;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      width: 100%;
+    }
+    input[type="range"] {
+      flex: 1;
+      accent-color: #ee5a24;
+      height: 4px;
+      cursor: pointer;
+    }
+    #vol-display {
+      min-width: 2.5ch;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.9rem;
+    }
+
+    /* ── Status indicator ── */
+    #status {
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      opacity: 0.55;
+      text-align: center;
+      min-height: 1.2em;
+    }
+    #status.connected { color: #6bcb77; opacity: 0.8; }
+    #status.error     { color: #ff6b6b; opacity: 0.9; }
+    #status.sending   { color: #ffd93d; opacity: 0.9; }
+  </style>
+</head>
+<body>
+
+  <h1>🐱 Cat Meow Button</h1>
+
+  <button id="meow-btn" disabled title="Meow!">🐾</button>
+
+  <div class="volume-row">
+    <span class="volume-label">Volume</span>
+    <div class="slider-row">
+      <span>🔈</span>
+      <input type="range" id="volume" min="0" max="100" value="75" />
+      <span id="vol-display">75</span>
+      <span>🔊</span>
+    </div>
+  </div>
+
+  <div id="status">Connecting…</div>
+
+<script>
+  // ── CONFIGURATION — fill these in ─────────────────────────────────────────
+  const MQTT_HOST = "201f46dac59942348379a5b80f0e2d06.s1.eu.hivemq.cloud";
+  const MQTT_PORT = 8884;          // WSS (WebSocket over TLS)
+  const MQTT_USER = "Immabot";
+  const MQTT_PASS = "Immabot1";
+  // ──────────────────────────────────────────────────────────────────────────
+
+  const MQTT_TOPIC  = "cat/meow";
+  const CLIENT_ID   = "web-cat-" + Math.random().toString(16).slice(2, 8);
+
+  const btn        = document.getElementById("meow-btn");
+  const slider     = document.getElementById("volume");
+  const volDisplay = document.getElementById("vol-display");
+  const statusEl   = document.getElementById("status");
+
+  // ── Volume slider ──────────────────────────────────────────────────────────
+  slider.addEventListener("input", () => {
+    volDisplay.textContent = slider.value;
+  });
+
+  // ── MQTT setup ─────────────────────────────────────────────────────────────
+  const client = new Paho.Client(MQTT_HOST, MQTT_PORT, "/mqtt", CLIENT_ID);
+
+  function setStatus(msg, cls) {
+    statusEl.textContent = msg;
+    statusEl.className   = cls || "";
+  }
+
+  client.onConnectionLost = (resp) => {
+    btn.disabled = true;
+    setStatus("Disconnected — reconnecting…", "error");
+    setTimeout(connect, 3000);
+  };
+
+  function connect() {
+    setStatus("Connecting…");
+    client.connect({
+      useSSL:   true,
+      userName: MQTT_USER,
+      password: MQTT_PASS,
+      onSuccess() {
+        setStatus("Connected ✓", "connected");
+        btn.disabled = false;
+      },
+      onFailure(err) {
+        setStatus("Connection failed: " + err.errorMessage, "error");
+        setTimeout(connect, 5000);
+      }
+    });
+  }
+
+  connect();
+
+  // ── Meow button ────────────────────────────────────────────────────────────
+  function sendMeow() {
+    if (!client.isConnected()) return;
+
+    const payload = JSON.stringify({ volume: parseInt(slider.value, 10) });
+    const message = new Paho.Message(payload);
+    message.destinationName = MQTT_TOPIC;
+    message.qos             = 1;
+
+    client.send(message);
+
+    // Brief visual feedback
+    btn.classList.add("pressed");
+    setStatus("Meow sent! 🐾", "sending");
+    setTimeout(() => {
+      btn.classList.remove("pressed");
+      setStatus("Connected ✓", "connected");
+    }, 400);
+  }
+
+  btn.addEventListener("click", sendMeow);
+
+  // Also trigger on spacebar / enter for keyboard users
+  document.addEventListener("keydown", (e) => {
+    if ((e.code === "Space" || e.code === "Enter") && !btn.disabled) {
+      e.preventDefault();
+      sendMeow();
+    }
+  });
+</script>
+</body>
+</html>
